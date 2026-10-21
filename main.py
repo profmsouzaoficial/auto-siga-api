@@ -25,7 +25,7 @@ class LancarNotasRequest(BaseModel):
     turma: str
     descricao_avaliacao: str
     notas_json: dict
-    periodo: str = "268"  # Agora usamos o ID numérico padrão do período
+    periodo: str = "2026/3" 
 
 class CriarAvaliacaoRequest(BaseModel):
     turma: str
@@ -33,7 +33,7 @@ class CriarAvaliacaoRequest(BaseModel):
     peso: float
     data: str
     descricao: str
-    periodo: str = "268"
+    periodo: str = "2026/3"
 
 # ==========================================
 # 3. ROTAS DA API

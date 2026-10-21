@@ -62,14 +62,35 @@ class SigaAPI:
         else:
             raise Exception("Falha de autenticação. Os tokens foram enviados, mas a UFJF rejeitou as credenciais.")
 
-    def _obter_id_turma(self, turma_codigo: str, periodo: str) -> str:
+    def _obter_id_turma(self, turma_codigo: str, periodo_texto: str) -> str:
         """
-        Faz um POST direto no motor de busca do SIGA pedindo as turmas 
-        específicas do seu ID de Docente no período selecionado.
+        Descobre o ID numérico do período (ex: "2026/3" -> "268") e depois
+        faz um POST direto no motor de busca do SIGA para obter a turma.
         """
-        url_busca = "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso2"
+        # 1. Acessa a página principal de notas para descobrir o ID do período
+        url_docente = "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso1/docente"
+        res_docente = self.session.get(url_docente)
+        soup_docente = BeautifulSoup(res_docente.text, "html.parser")
         
-        # O Payload milagroso capturado na sua engenharia reversa
+        id_periodo = None
+        
+        # Se o utilizador já enviou o número diretamente (ex: "268"), usamos direto
+        if periodo_texto.isdigit():
+            id_periodo = periodo_texto
+        else:
+            # Procura a opção no <select> de períodos que corresponde a "2026/3"
+            for opcao in soup_docente.find_all("option"):
+                if opcao.text and periodo_texto in opcao.text:
+                    id_periodo = opcao.get("value")
+                    break
+                    
+            if not id_periodo:
+                raise Exception(f"Período '{periodo_texto}' não encontrado na lista do SIGA.")
+                
+        print(f"Período '{periodo_texto}' traduzido para o ID interno: {id_periodo}")
+
+        # 2. Faz a busca das turmas do professor neste período exato
+        url_busca = "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso2"
         payload_busca = {
             "__LAYOUT": "default",
             "__ELEMENT": "centerPane",
@@ -77,39 +98,34 @@ class SigaAPI:
             "__ISFILEUPLOAD": "no",
             "__ISAJAXEVENT": "no",
             "__EVENTTARGET": "btnPost",
-            "filter::idPeriodoLetivo": periodo,
-            "filter::idDocente": "29230",  # O seu ID interno de Professor na UFJF!
+            "filter::idPeriodoLetivo": id_periodo,  # O ID traduzido entra aqui magicamente!
+            "filter::idDocente": "29230",
             "ajaxResponseType": "json"
         }
         
-        # Cabeçalhos para o SIGA achar que somos um formulário AJAX do navegador
         headers_ajax = {
             "Content-Type": "application/x-www-form-urlencoded",
             "X-Requested-With": "XMLHttpRequest",
-            "Referer": "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso1/docente"
+            "Referer": url_docente
         }
         
-        print(f"Pesquisando turmas do professor (ID 29230) no período {periodo}...")
+        print(f"Pesquisando turmas do professor (ID 29230) no período {periodo_texto}...")
         res_turmas = self.session.post(url_busca, data=payload_busca, headers=headers_ajax)
         
-        # Decodifica possíveis retornos em JSON do Dojo Toolkit
         texto_html = res_turmas.text
         try:
             import json
             dados_json = res_turmas.json()
-            texto_html = json.dumps(dados_json) # Transforma o JSON de volta em texto para o BeautifulSoup ler as tags
+            texto_html = json.dumps(dados_json)
         except:
             pass
             
         soup = BeautifulSoup(texto_html, "html.parser")
-        
-        # Procura a string da turma (ex: "CBV018GV-A") no código retornado
         elemento_turma = soup.find(string=re.compile(turma_codigo))
         
         if not elemento_turma:
-            raise Exception(f"Turma {turma_codigo} não encontrada na resposta do servidor para o período {periodo}.")
+            raise Exception(f"Turma {turma_codigo} não encontrada na resposta do servidor para o período {periodo_texto}.")
             
-        # Sobe na estrutura HTML até achar a linha (<tr>) e o botão "Editar" que esconde o ID da turma
         linha = elemento_turma.find_parent("tr")
         if not linha:
             raise Exception("Turma encontrada, mas falha ao mapear a tabela HTML.")
@@ -117,7 +133,6 @@ class SigaAPI:
         link_editar = linha.find("a", href=re.compile(r"formNotaParcialObject"))
         if link_editar and "href" in link_editar.attrs:
             url_destino = link_editar["href"]
-            # Corta a URL para sobrar apenas o número (ex: 1248384)
             id_turma = url_destino.split("formNotaParcialObject/")[-1].split("?")[0].strip("/")
             return id_turma
             

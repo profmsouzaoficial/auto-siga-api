@@ -3,7 +3,7 @@
     "path": "~/Projetos/AUTO-SIGA-API/siga_bot.py",
     "project_path": "siga_bot.py",
     "type": "python",
-    "hash": "1305316767",
+    "hash": "3634134970",
     "contents": "",
     "dirty": false,
     "created": 1792584735334.0,
@@ -13,15 +13,15 @@
         "tempName": "Untitled1",
         "source_window_id": "",
         "Source": "Source",
-        "cursorPosition": "123,79",
-        "scrollLine": "102"
+        "cursorPosition": "138,79",
+        "scrollLine": "106"
     },
     "folds": "",
-    "lastKnownWriteTime": 1792588779,
+    "lastKnownWriteTime": 1792589168,
     "encoding": "UTF-8",
     "collab_server": "",
     "source_window": "",
-    "last_content_update": 1792588779673,
+    "last_content_update": 1792589168672,
     "read_only": false,
     "read_only_alternatives": []
 }

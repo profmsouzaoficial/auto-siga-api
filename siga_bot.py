@@ -17,26 +17,40 @@ class SigaAPI:
     def login(self, cpf: str, senha: str):
         print("Iniciando login HTTP direto...")
         
-        # 1. Acede à página inicial para receber os primeiros Cookies de sessão
-        self.session.get("https://siga.ufjf.br/")
+        # 1. Bate na porta do SIGA. Ele vai redirecionar-nos para o auth.ufjf.br
+        res_inicial = self.session.get("https://siga.ufjf.br/")
         
-        # 2. Faz o POST direto para o endpoint de autenticação
-        url_login = "https://auth.ufjf.br/login"
-        payload_login = {
-            "username": cpf,
-            "password": senha
-        }
-        resposta = self.session.post(url_login, data=payload_login)
+        # 2. Inspeciona a página de login para "roubar" os tokens invisíveis do formulário
+        soup_login = BeautifulSoup(res_inicial.text, "html.parser")
+        form_login = soup_login.find("form")
         
-        # 3. Força a criação da sessão no SIGA Académico
-        self.session.get("https://siga.ufjf.br/index.php")
+        if not form_login:
+            raise Exception("Não foi possível encontrar o formulário de autenticação no portal.")
+            
+        payload_login = {}
+        # Varre e guarda todos os inputs invisíveis de segurança gerados pela UFJF
+        for input_tag in form_login.find_all("input"):
+            nome = input_tag.get("name")
+            valor = input_tag.get("value", "")
+            if nome:
+                payload_login[nome] = valor
+                
+        # 3. Injeta as suas credenciais reais no meio dos tokens capturados
+        payload_login["username"] = cpf
+        payload_login["password"] = senha
         
-        # Se a palavra 'Professor' estiver no código-fonte, o login funcionou
-        if "Professor" in resposta.text or "Siga" in resposta.text:
-            print("Login bem-sucedido! Cookies capturados.")
+        # 4. Faz o POST de volta para a mesma URL, agora disfarçado de navegador legítimo
+        self.session.post(res_inicial.url, data=payload_login)
+        
+        # 5. Força a entrada na página inicial do SIGA Académico
+        res_painel = self.session.get("https://siga.ufjf.br/index.php")
+        
+        # A validação final: O SIGA abriu a sua página de professor?
+        if "Professor" in res_painel.text or "Siga" in res_painel.text:
+            print("Login bem-sucedido! Tokens contornados e cookies capturados.")
             self.logado = True
         else:
-            raise Exception("Falha de autenticação. Verifique CPF e Senha.")
+            raise Exception("Falha de autenticação. Os tokens foram enviados, mas a UFJF rejeitou as credenciais.")
 
     def _obter_id_turma(self, turma_codigo: str, periodo: str) -> str:
         """

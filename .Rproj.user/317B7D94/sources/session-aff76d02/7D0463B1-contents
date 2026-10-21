@@ -1,0 +1,38 @@
+from siga_bot import SigaAPI
+
+# 1. Inicializa o robô (headless=False para você ver ele trabalhando)
+siga = SigaAPI(headless=False)
+
+try:
+    # 2. Faz o login (ele vai tentar usar a sessão salva, se existir)
+    siga.login(cpf="08884941733", senha="C1nt1l4nt3@2025")
+    
+    # 3. Cria Avaliação
+    siga.criar_avaliacao(
+        turma="CBV018GV-A", 
+        num_tvc=4, 
+        peso=30, 
+        data="18/10/2026", 
+        descricao="Prova FICTÍCIA criada por automação",
+        periodo="2026/3"
+    )
+
+    # 4. Simulando as notas que vieram do seu sistema/arquivo JSON
+    minhas_notas = {
+        "202506007GV": 25.1,
+        "202506015GV": 25.2,
+        "202506025GV": 25.3,
+        "202506019GV": 25.4
+    }
+
+    # 4.1 Lançando as notas direto no SIGA
+    siga.lancar_notas(
+        turma="CBV018GV-A",
+        descricao_avaliacao="Prova FICTÍCIA criada por automação",
+        notas_json=minhas_notas,
+        periodo="2026/3"
+    )
+
+finally:
+    # 5. Garante que o navegador será fechado no final, mesmo se der erro
+    siga.fechar()

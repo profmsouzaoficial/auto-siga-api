@@ -64,38 +64,59 @@ class SigaAPI:
 
     def _obter_id_turma(self, turma_codigo: str, periodo: str) -> str:
         """
-        Navega silenciosamente pelas notas, aplica o filtro do período
-        e extrai o ID numérico (ex: 1248384) escondido no código HTML da turma.
+        Navega silenciosamente pelas notas (Visão do Docente), aplica o filtro do período
+        se necessário e extrai o ID numérico escondido no código HTML da turma.
         """
-        # Acede à página de Lançamento de Notas Parciais
-        url_notas = "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso1"
-        self.session.get(url_notas)
+        # 1. A rota correta e direta para a lista de turmas do Professor
+        url_notas = "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso1/docente"
         
-        # Aqui disparamos o filtro do período (substituindo o "Enter" do teclado)
-        url_filtro = "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso1"
-        payload_filtro = {
-            "filter::idPeriodoLetivo": periodo.replace("/", ""), # Normalmente envia apenas os números
-            "__EVENTTARGET": "btnPost"
-        }
-        res_filtro = self.session.post(url_filtro, data=payload_filtro)
+        # 2. Fazemos o GET inicial (frequentemente o SIGA já carrega o período atual)
+        res_notas = self.session.get(url_notas)
+        soup = BeautifulSoup(res_notas.text, "html.parser")
         
-        # Analisa o HTML invisível para achar o código da turma (ex: "CBV018GV-A")
-        soup = BeautifulSoup(res_filtro.text, "html.parser")
+        # Procura a turma no ecrã atual
+        elemento_turma = soup.find(string=re.compile(turma_codigo))
         
-        # Procuramos a linha da tabela que contém a nossa turma
-        linha_turma = soup.find("td", string=re.compile(turma_codigo))
-        if not linha_turma:
+        if not elemento_turma:
+            print(f"Turma não visível. Aplicando filtro para o período {periodo}...")
+            # Extraímos os campos ocultos de segurança do formulário da página atual
+            form = soup.find("form")
+            payload_filtro = {}
+            if form:
+                for input_tag in form.find_all("input"):
+                    nome = input_tag.get("name")
+                    valor = input_tag.get("value", "")
+                    if nome:
+                        payload_filtro[nome] = valor
+            
+            # Injetamos o período desejado e simulamos o clique no "Enviar" do Dojo
+            payload_filtro["filter::idPeriodoLetivo"] = periodo
+            payload_filtro["__EVENTTARGET"] = "btnPost_label"
+            payload_filtro["__LAYOUT"] = "default"
+            
+            res_notas = self.session.post(url_notas, data=payload_filtro)
+            soup = BeautifulSoup(res_notas.text, "html.parser")
+            elemento_turma = soup.find(string=re.compile(turma_codigo))
+            
+        if not elemento_turma:
             raise Exception(f"Turma {turma_codigo} não encontrada no período {periodo}.")
             
-        # O ID da turma está escondido no link do botão "Editar" daquela linha
-        link_editar = linha_turma.find_parent("tr").find("a", class_="actionTextLink")
-        if link_editar and 'href' in link_editar.attrs:
-            # Extrai o ID da URL: /index.php/siga/academico/nota/formNotaParcialObject/1248384
-            url_destino = link_editar['href']
-            id_turma = url_destino.split("/")[-1]
+        # 3. Sobe na árvore HTML para encontrar a linha da tabela (<tr>) dessa turma
+        linha = elemento_turma.find_parent("tr")
+        if not linha:
+            raise Exception("Turma encontrada, mas falha ao mapear a tabela HTML.")
+            
+        # 4. Procura o link do botão 'Editar' que contém o ID verdadeiro da turma
+        link_editar = linha.find("a", href=re.compile(r"formNotaParcialObject"))
+        if link_editar and "href" in link_editar.attrs:
+            url_destino = link_editar["href"]
+            # Exemplo capturado: /index.php/siga/academico/nota/formNotaParcialObject/1248384
+            id_turma = url_destino.split("formNotaParcialObject/")[-1]
+            # Limpa qualquer sujeira que possa vir na URL (ex: ?filter=...)
+            id_turma = id_turma.split("?")[0].strip("/") 
             return id_turma
             
-        raise Exception("Não foi possível extrair o ID da Turma.")
+        raise Exception("Botão de 'Editar' da turma não encontrado na tabela.")
 
     def criar_avaliacao(self, turma: str, num_tvc: int, peso: float, data: str, descricao: str, periodo: str = "268"):
         """

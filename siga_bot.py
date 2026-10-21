@@ -147,7 +147,7 @@ class SigaAPI:
             raise Exception("Erro: Você precisa fazer o login primeiro.")
             
         print(f"Buscando ID interno da turma {turma}...")
-        id_turma = self._obter_id_turma(turma_codigo=turma, periodo=periodo)
+        id_turma = self._obter_id_turma(turma_codigo=turma, periodo_texto=periodo)
         print(f"ID da Turma capturado: {id_turma}")
 
         # Preparação do "míssil" de acordo com o seu print do Payload

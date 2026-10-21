@@ -64,56 +64,61 @@ class SigaAPI:
 
     def _obter_id_turma(self, turma_codigo: str, periodo: str) -> str:
         """
-        Navega silenciosamente pelas notas (Visão do Docente), aplica o filtro do período
-        se necessário e extrai o ID numérico escondido no código HTML da turma.
+        Faz um POST direto no motor de busca do SIGA pedindo as turmas 
+        específicas do seu ID de Docente no período selecionado.
         """
-        # 1. A rota correta e direta para a lista de turmas do Professor
-        url_notas = "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso1/docente"
+        url_busca = "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso2"
         
-        # 2. Fazemos o GET inicial (frequentemente o SIGA já carrega o período atual)
-        res_notas = self.session.get(url_notas)
-        soup = BeautifulSoup(res_notas.text, "html.parser")
+        # O Payload milagroso capturado na sua engenharia reversa
+        payload_busca = {
+            "__LAYOUT": "default",
+            "__ELEMENT": "centerPane",
+            "__TEMPLATE": "base",
+            "__ISFILEUPLOAD": "no",
+            "__ISAJAXEVENT": "no",
+            "__EVENTTARGET": "btnPost",
+            "filter::idPeriodoLetivo": periodo,
+            "filter::idDocente": "29230",  # O seu ID interno de Professor na UFJF!
+            "ajaxResponseType": "json"
+        }
         
-        # Procura a turma no ecrã atual
+        # Cabeçalhos para o SIGA achar que somos um formulário AJAX do navegador
+        headers_ajax = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": "https://siga.ufjf.br/index.php/siga/academico/nota/formNotaParcialPasso1/docente"
+        }
+        
+        print(f"Pesquisando turmas do professor (ID 29230) no período {periodo}...")
+        res_turmas = self.session.post(url_busca, data=payload_busca, headers=headers_ajax)
+        
+        # Decodifica possíveis retornos em JSON do Dojo Toolkit
+        texto_html = res_turmas.text
+        try:
+            import json
+            dados_json = res_turmas.json()
+            texto_html = json.dumps(dados_json) # Transforma o JSON de volta em texto para o BeautifulSoup ler as tags
+        except:
+            pass
+            
+        soup = BeautifulSoup(texto_html, "html.parser")
+        
+        # Procura a string da turma (ex: "CBV018GV-A") no código retornado
         elemento_turma = soup.find(string=re.compile(turma_codigo))
         
         if not elemento_turma:
-            print(f"Turma não visível. Aplicando filtro para o período {periodo}...")
-            # Extraímos os campos ocultos de segurança do formulário da página atual
-            form = soup.find("form")
-            payload_filtro = {}
-            if form:
-                for input_tag in form.find_all("input"):
-                    nome = input_tag.get("name")
-                    valor = input_tag.get("value", "")
-                    if nome:
-                        payload_filtro[nome] = valor
+            raise Exception(f"Turma {turma_codigo} não encontrada na resposta do servidor para o período {periodo}.")
             
-            # Injetamos o período desejado e simulamos o clique no "Enviar" do Dojo
-            payload_filtro["filter::idPeriodoLetivo"] = periodo
-            payload_filtro["__EVENTTARGET"] = "btnPost_label"
-            payload_filtro["__LAYOUT"] = "default"
-            
-            res_notas = self.session.post(url_notas, data=payload_filtro)
-            soup = BeautifulSoup(res_notas.text, "html.parser")
-            elemento_turma = soup.find(string=re.compile(turma_codigo))
-            
-        if not elemento_turma:
-            raise Exception(f"Turma {turma_codigo} não encontrada no período {periodo}.")
-            
-        # 3. Sobe na árvore HTML para encontrar a linha da tabela (<tr>) dessa turma
+        # Sobe na estrutura HTML até achar a linha (<tr>) e o botão "Editar" que esconde o ID da turma
         linha = elemento_turma.find_parent("tr")
         if not linha:
             raise Exception("Turma encontrada, mas falha ao mapear a tabela HTML.")
             
-        # 4. Procura o link do botão 'Editar' que contém o ID verdadeiro da turma
         link_editar = linha.find("a", href=re.compile(r"formNotaParcialObject"))
         if link_editar and "href" in link_editar.attrs:
             url_destino = link_editar["href"]
-            # Exemplo capturado: /index.php/siga/academico/nota/formNotaParcialObject/1248384
-            id_turma = url_destino.split("formNotaParcialObject/")[-1]
-            # Limpa qualquer sujeira que possa vir na URL (ex: ?filter=...)
-            id_turma = id_turma.split("?")[0].strip("/") 
+            # Corta a URL para sobrar apenas o número (ex: 1248384)
+            id_turma = url_destino.split("formNotaParcialObject/")[-1].split("?")[0].strip("/")
             return id_turma
             
         raise Exception("Botão de 'Editar' da turma não encontrado na tabela.")

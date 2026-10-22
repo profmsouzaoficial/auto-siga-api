@@ -185,6 +185,103 @@ class SigaAPI:
         else:
             raise Exception(f"Erro ao salvar: {resposta.status_code} - {resposta.text}")
             
+    def lancar_notas(self, turma: str, descricao_avaliacao: str, notas_json: dict, periodo_texto: str = "2026/3"):
+        if not self.logado:
+            raise Exception("Erro: Você precisa fazer o login primeiro.")
+            
+        print(f"Buscando ID interno da turma {turma}...")
+        id_turma = self._obter_id_turma(turma_codigo=turma, periodo_texto=periodo_texto)
+
+        # 1. Obter a lista de avaliações (TVCs) da turma
+        url_tvcs = f"https://siga.ufjf.br/index.php/siga/academico/nota/formTVCFind/{id_turma}"
+        res_tvcs = self.session.get(url_tvcs)
+        soup_tvcs = BeautifulSoup(res_tvcs.text, "html.parser")
+
+        # Procura a avaliação pelo nome (ex: "Teste API Veloz")
+        elemento_tvc = soup_tvcs.find(string=lambda text: text and descricao_avaliacao in text)
+        if not elemento_tvc:
+            raise Exception(f"Avaliação '{descricao_avaliacao}' não encontrada na turma {turma}.")
+
+        linha_tvc = elemento_tvc.find_parent("tr")
+        
+        # Encontra o botão "Lançar" (ex: href="/index.php/siga/academico/nota/formNotasParciais/600144")
+        link_lancar = linha_tvc.find("a", string=re.compile("Lançar"))
+        if not link_lancar or 'href' not in link_lancar.attrs:
+            raise Exception("Botão 'Lançar' não encontrado para esta avaliação.")
+
+        url_lancar = link_lancar["href"]
+        id_tvc = url_lancar.split("/")[-1].split("?")[0] # Extrai o ID da TVC (ex: 600144)
+        print(f"ID da Avaliação (TVC) capturado: {id_tvc}")
+
+        # 2. Acessar a pauta de notas para extrair os IDs internos dos alunos
+        url_pauta = f"https://siga.ufjf.br{url_lancar}"
+        res_pauta = self.session.get(url_pauta)
+        soup_pauta = BeautifulSoup(res_pauta.text, "html.parser")
+
+        form_notas = soup_pauta.find("form")
+        if not form_notas:
+            raise Exception("Formulário de pauta não encontrado.")
+
+        # O Payload cérebro - Copiado diretamente da sua imagem de Engenharia Reversa
+        payload = {
+            "__LAYOUT": "default",
+            "__ELEMENT": "centerPane",
+            "__TEMPLATE": "base",
+            "__ISFILEUPLOAD": "no",
+            "__ISAJAXEVENT": "no",
+            "__EVENTTARGET": "btnPost",
+            "tvc::idTVC": id_tvc,
+            "tvc::idTurma": id_turma,
+            "stats::media": "0",
+            "stats::desviopadrao": "0",
+            "gridFind_PAGING": "no",
+            "gridFind_PAGE": "1",
+            "gridFind_GOPAGE": "1",
+            "gridFind__VIEWSTATE": "",
+            "ajaxResponseType": "json"
+        }
+
+        # Extrai os dados ocultos da avaliação gerados pelo SIGA (peso, data, etc.)
+        for input_tag in form_notas.find_all("input"):
+            nome = input_tag.get("name")
+            valor = input_tag.get("value", "")
+            if nome and nome.startswith("tvc::") and nome not in payload:
+                payload[nome] = valor
+
+        # 3. Inicializa todos os alunos vazios para o SIGA não reclamar da falta de campos
+        for input_nota in soup_pauta.find_all("input", {"name": re.compile(r"notas\[\d+\]")}):
+            nome_campo = input_nota.get("name")
+            payload[nome_campo] = input_nota.get("value", "")
+
+        # 4. Injeta as notas enviadas no JSON mapeando pela matrícula
+        for matricula, nota in notas_json.items():
+            elem_matricula = soup_pauta.find(string=lambda text: text and str(matricula) in text)
+            if elem_matricula:
+                linha_aluno = elem_matricula.find_parent("tr")
+                input_nota = linha_aluno.find("input", {"name": re.compile(r"notas\[\d+\]")})
+                if input_nota:
+                    nome_campo = input_nota.get("name") # Aqui descobrimos o notas[9100923]!
+                    payload[nome_campo] = str(nota)
+                    print(f"  -> Mapeado: Matrícula {matricula} -> ID Interno {nome_campo} = Nota {nota}")
+            else:
+                print(f"  -> AVISO: Aluno com matrícula {matricula} não encontrado na pauta.")
+
+        # 5. O Grande Disparo! 
+        url_salvar = "https://siga.ufjf.br/index.php/siga/academico/nota/saveNotasParciais"
+        headers_ajax = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": url_pauta
+        }
+
+        print("Salvando notas na base de dados do SIGA...")
+        res_salvar = self.session.post(url_salvar, data=payload, headers=headers_ajax)
+
+        if res_salvar.status_code == 200:
+            print(f"Sucesso Total! Notas lançadas na avaliação '{descricao_avaliacao}'.")
+        else:
+            raise Exception(f"Erro ao lançar notas: {res_salvar.status_code} - {res_salvar.text}")
+    
     def fechar(self):
         # A API HTTP fecha automaticamente, não há navegadores a prender a memória.
         self.session.close()

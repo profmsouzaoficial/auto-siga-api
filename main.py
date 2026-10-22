@@ -53,7 +53,7 @@ def api_lancar_notas(req: LancarNotasRequest, api_key: str = Depends(validar_api
             turma=req.turma,
             descricao_avaliacao=req.descricao_avaliacao,
             notas_json=req.notas_json,
-            periodo=req.periodo
+            periodo_texto=req.periodo
         )
         return {"status": "sucesso", "mensagem": f"Notas lançadas na turma {req.turma}"}
     except Exception:

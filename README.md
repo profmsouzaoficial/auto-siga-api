@@ -11,10 +11,8 @@ Não possui qualquer vínculo com o CGCO, com a administração da UFJF ou com a
 
 ---
 
-## ✨ Características
+## ✨ CPrincipais Características
 - **Velocidade Extrema:** Não utiliza navegadores virtuais (Playwright/Selenium). Toda a navegação é feita via `requests` e `BeautifulSoup`, reduzindo o tempo de operação de ~60 segundos para **1 a 2 segundos**.
-- **Tradução Dinâmica:** Capacidade de ler períodos letivos em formato humano (ex: `"2026/3"`) e encontrar automaticamente os IDs internos das turmas e avaliações.
-- **Engenharia Reversa do Dojo Toolkit:** Contorna perfeitamente a proteção de tokens CSRF do `auth.ufjf.br` e interage diretamente com o banco de dados do SIGA.
 - **Segurança de Acesso:** Protegido por uma chave API customizada (`X-API-Key`) exigida no cabeçalho (Header) das requisições.
 
 ---
@@ -23,5 +21,78 @@ Não possui qualquer vínculo com o CGCO, com a administração da UFJF ou com a
 
 ### 1. Clonar o repositório e preparar o ambiente
 ```bash
-git clone [https://github.com/profmsouzaoficial/auto-siga-api.git](https://github.com/profmsouzaoficial/auto-siga-api.git)
+git clone https://github.com/profmsouzaoficial/auto-siga-api.git
 cd auto-siga-api
+```
+
+### 2. Configurar as Variáveis de Ambiente
+Na raiz do projeto, faça uma cópia do arquivo de exemplo `.env.example` e renomeie-o para `.env`. Preencha com as suas credenciais reais:
+```env
+SIGA_CPF=12345678900
+SIGA_SENHA=SuaSenhaSecreta
+API_SECRET_KEY=SuaChaveDeAPI_ParaProtegerORoteador
+```
+*(Nota: O arquivo `.env` está ignorado no `.gitignore` para nunca ser enviado acidentalmente para o GitHub).*
+
+### 3. Opção A: Rodar via Python (Uvicorn)
+Requer [Python 3.9+](https://www.python.org/).
+```bash
+pip install -r requirements.txt
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+### 3. Opção B: Rodar via Docker (Recomendado)
+```bash
+docker build -t auto-siga-api .
+docker run -p 8000:8000 --env-file .env auto-siga-api
+```
+
+---
+
+## 📖 Como Usar (Endpoints)
+
+Após iniciar o servidor, acesse a documentação interativa do Swagger no seu navegador:
+👉 **`http://localhost:8000/docs`**
+
+Para utilizar as rotas, deve autenticar-se no botão **Authorize** usando a sua `API_SECRET_KEY`.
+
+### 1. Criar Avaliação (TVC)
+`POST /api/criar-avaliacao`
+
+**Exemplo de Payload (JSON):**
+```json
+{
+  "turma": "CBV018GV-A",
+  "num_tvc": 4,
+  "peso": 10.0,
+  "data": "30/10/2026",
+  "descricao": "Trabalho Prático",
+  "periodo": "2026/3"
+}
+```
+
+### 2. Lançar Notas
+`POST /api/lancar-notas`
+
+**Exemplo de Payload (JSON):**
+```json
+{
+  "turma": "CBV018GV-A",
+  "descricao_avaliacao": "Trabalho Prático",
+  "notas_json": {
+    "202165001": 8.5,
+    "202033002": 9.0,
+    "202288003": 10.0
+  },
+  "periodo": "2026/3"
+}
+```
+*(As chaves do objeto `notas_json` devem ser as matrículas reais dos alunos).*
+
+---
+
+## 🤝 Contribuição
+Contribuições são muito bem-vindas! Se você mapeou novas rotas do SIGA (como lançamento de frequência, retificação de notas ou geração de pautas em PDF), sinta-se à vontade para abrir um *Pull Request* ou reportar nas *Issues*.
+
+## 📄 Licença
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.

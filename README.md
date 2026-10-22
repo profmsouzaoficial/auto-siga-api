@@ -11,7 +11,7 @@ Não possui qualquer vínculo com o CGCO, com a administração da UFJF ou com a
 
 ---
 
-## ✨ CPrincipais Características
+## ✨ Principais Características
 - **Velocidade Extrema:** Não utiliza navegadores virtuais (Playwright/Selenium). Toda a navegação é feita via `requests` e `BeautifulSoup`, reduzindo o tempo de operação de ~60 segundos para **1 a 2 segundos**.
 - **Segurança de Acesso:** Protegido por uma chave API customizada (`X-API-Key`) exigida no cabeçalho (Header) das requisições.
 
